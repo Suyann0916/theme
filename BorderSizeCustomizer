@@ -1,0 +1,165 @@
+/**
+ * @name BorderSizeCustomizer
+ * @author OpenAI
+ * @version 1.0.0
+ * @description 自由調整 Discord 訊息框、伺服器列表、頻道側邊欄與整體視窗的邊界寬度及圓角。
+ * @website https://github.com/Suyann0916/theme
+ * @source https://github.com/Suyann0916/theme
+ */
+
+module.exports = class BorderSizeCustomizer {
+    start() {
+        this.loadSettings();
+        this.injectStyles();
+    }
+
+    stop() {
+        this.removeStyles();
+    }
+
+    loadSettings() {
+        this.defaults = {
+            enabled: true,
+            borderColor: "#5865f2",
+            windowWidth: 0,
+            windowRadius: 0,
+            guildWidth: 0,
+            guildRadius: 12,
+            channelWidth: 0,
+            channelRadius: 8,
+            chatWidth: 0,
+            chatRadius: 8
+        };
+
+        const saved = BdApi.Data.load("BorderSizeCustomizer", "settings") || {};
+        this.settings = { ...this.defaults, ...saved };
+    }
+
+    saveSettings() {
+        BdApi.Data.save("BorderSizeCustomizer", "settings", this.settings);
+        this.injectStyles();
+    }
+
+    clamp(value, minimum, maximum) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return minimum;
+        return Math.min(maximum, Math.max(minimum, number));
+    }
+
+    buildCss() {
+        const s = this.settings;
+        if (!s.enabled) return "";
+
+        const color = /^#[0-9a-f]{6}$/i.test(s.borderColor)
+            ? s.borderColor
+            : this.defaults.borderColor;
+
+        const area = (width, radius) => `
+            border-width: ${this.clamp(width, 0, 20)}px !important;
+            border-style: solid !important;
+            border-color: ${color} !important;
+            border-radius: ${this.clamp(radius, 0, 50)}px !important;
+        `;
+
+        return `
+/* Border Size Customizer */
+#app-mount {
+${area(s.windowWidth, s.windowRadius)}
+}
+
+[class*="guilds_"], [class*="guildList_"], [aria-label*="Servers" i], [aria-label*="伺服器" i] {
+${area(s.guildWidth, s.guildRadius)}
+}
+
+[class*="sidebar_"]:not([class*="sidebarList_"]), [class*="base_"] > [class*="sidebar_"] {
+${area(s.channelWidth, s.channelRadius)}
+}
+
+[class*="chatContent_"], [class*="messagesWrapper_"], [class*="chat_"] [class*="scroller_"] {
+${area(s.chatWidth, s.chatRadius)}
+}
+`;
+    }
+
+    injectStyles() {
+        this.removeStyles();
+        const css = this.buildCss();
+        if (!css) return;
+
+        if (BdApi.DOM?.addStyle) {
+            BdApi.DOM.addStyle("border-size-customizer", css);
+        } else if (BdApi.injectCSS) {
+            BdApi.injectCSS("border-size-customizer", css);
+        }
+    }
+
+    removeStyles() {
+        if (BdApi.DOM?.removeStyle) {
+            BdApi.DOM.removeStyle("border-size-customizer");
+        } else if (BdApi.clearCSS) {
+            BdApi.clearCSS("border-size-customizer");
+        }
+    }
+
+    getSettingsPanel() {
+        const slider = (id, name, note, min, max) => ({
+            type: "slider",
+            id,
+            name,
+            note,
+            value: this.settings[id],
+            min,
+            max,
+            step: 1,
+            onChange: value => {
+                this.settings[id] = this.clamp(value, min, max);
+                this.saveSettings();
+            }
+        });
+
+        const settings = [
+            {
+                type: "switch",
+                id: "enabled",
+                name: "啟用邊界自訂",
+                note: "開啟或關閉所有自訂邊界效果。",
+                value: this.settings.enabled,
+                onChange: value => {
+                    this.settings.enabled = value;
+                    this.saveSettings();
+                }
+            },
+            {
+                type: "text",
+                id: "borderColor",
+                name: "邊界顏色",
+                note: "使用六位十六進位色碼，例如 #5865f2。",
+                value: this.settings.borderColor,
+                onChange: value => {
+                    this.settings.borderColor = value.trim();
+                    this.saveSettings();
+                }
+            },
+            slider("windowWidth", "整體視窗邊界寬度", "設定整體 Discord 視窗的邊界厚度。", 0, 20),
+            slider("windowRadius", "整體視窗圓角", "設定整體 Discord 視窗的圓角大小。", 0, 50),
+            slider("guildWidth", "伺服器列表邊界寬度", "設定伺服器列表區域的邊界厚度。", 0, 20),
+            slider("guildRadius", "伺服器列表圓角", "設定伺服器圖示與列表區域的圓角大小。", 0, 50),
+            slider("channelWidth", "頻道側邊欄邊界寬度", "設定頻道側邊欄的邊界厚度。", 0, 20),
+            slider("channelRadius", "頻道側邊欄圓角", "設定頻道側邊欄的圓角大小。", 0, 50),
+            slider("chatWidth", "訊息框邊界寬度", "設定訊息區域的邊界厚度。", 0, 20),
+            slider("chatRadius", "訊息框圓角", "設定訊息區域的圓角大小。", 0, 50)
+        ];
+
+        if (BdApi.UI?.buildSettingsPanel) {
+            return BdApi.UI.buildSettingsPanel({
+                settings,
+                onChange: (category, id, value) => {
+                    this.settings[id] = value;
+                    this.saveSettings();
+                }
+            });
+        }
+
+        return settings;
+    }
+};
